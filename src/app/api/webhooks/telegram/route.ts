@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { TelegramAdapter } from '@/lib/channels/telegram';
 import { getRepository } from '@/lib/db';
 import { getLlmProvider } from '@/lib/llm';
 import { AgentOrchestrator } from '@/lib/agent/orchestrator';
+
+export const maxDuration = 60;
 
 const adapter = new TelegramAdapter();
 
@@ -27,33 +29,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  try {
-    const repo = getRepository();
-    const llm = getLlmProvider();
-    const orchestrator = new AgentOrchestrator(repo, llm);
+  // 3. Process asynchronously so Telegram gets instant 200 OK
+  after(async () => {
+    try {
+      const repo = getRepository();
+      const llm = getLlmProvider();
+      const orchestrator = new AgentOrchestrator(repo, llm);
 
-    for (const msg of messages) {
-      const res = await orchestrator.processIncomingMessage({
-        channel: 'telegram',
-        platformUserId: msg.platformUserId,
-        platformMessageId: msg.platformMessageId,
-        text: msg.text,
-        displayName: msg.displayName,
-        attachments: msg.attachments,
-      });
+      for (const msg of messages) {
+        const res = await orchestrator.processIncomingMessage({
+          channel: 'telegram',
+          platformUserId: msg.platformUserId,
+          platformMessageId: msg.platformMessageId,
+          text: msg.text,
+          displayName: msg.displayName,
+          attachments: msg.attachments,
+        });
 
-      // If response was generated and not taken over by human, send reply immediately
-      if (res.replyText && !res.isHumanTakeover) {
-        const sendResult = await adapter.sendText(msg.platformUserId, res.replyText);
-        if (!sendResult.ok) {
-          console.error('[Telegram Send Error]:', sendResult.error);
+        // If response was generated and not taken over by human, send reply immediately
+        if (res.replyText && !res.isHumanTakeover) {
+          const sendResult = await adapter.sendText(msg.platformUserId, res.replyText);
+          if (!sendResult.ok) {
+            console.error('[Telegram Send Error]:', sendResult.error);
+          }
         }
       }
+    } catch (error: any) {
+      console.error('[Telegram Background Process Exception]:', error);
     }
+  });
 
-    return NextResponse.json({ ok: true });
-  } catch (error: any) {
-    console.error('[Telegram Webhook Exception]:', error);
-    return NextResponse.json({ ok: false, error: error?.message || String(error) }, { status: 200 });
-  }
+  return NextResponse.json({ ok: true });
 }
