@@ -10,6 +10,12 @@ function isRlsError(err: any): boolean {
 
 export class SupabaseRepository implements DatabaseRepository {
   private fallback = new InMemoryRepository();
+  private fallbackConvIds = new Set<string>();
+
+  private useFallbackConv(res: { conversation: ConversationRecord; isNew: boolean }): { conversation: ConversationRecord; isNew: boolean } {
+    this.fallbackConvIds.add(res.conversation.id);
+    return res;
+  }
 
   constructor(private client: SupabaseClient) {}
 
@@ -173,7 +179,7 @@ export class SupabaseRepository implements DatabaseRepository {
         .maybeSingle();
 
       if (idFetchErr && isRlsError(idFetchErr)) {
-        return this.fallback.getOrCreateConversation(channel, platformUserId, displayName);
+        return this.useFallbackConv(await this.fallback.getOrCreateConversation(channel, platformUserId, displayName));
       }
 
       if (!identity) {
@@ -184,7 +190,7 @@ export class SupabaseRepository implements DatabaseRepository {
           .single();
         if (identErr) {
           if (isRlsError(identErr)) {
-            return this.fallback.getOrCreateConversation(channel, platformUserId, displayName);
+            return this.useFallbackConv(await this.fallback.getOrCreateConversation(channel, platformUserId, displayName));
           }
           throw identErr;
         }
@@ -202,7 +208,7 @@ export class SupabaseRepository implements DatabaseRepository {
         .maybeSingle();
 
       if (convFetchErr && isRlsError(convFetchErr)) {
-        return this.fallback.getOrCreateConversation(channel, platformUserId, displayName);
+        return this.useFallbackConv(await this.fallback.getOrCreateConversation(channel, platformUserId, displayName));
       }
 
       let isNew = false;
@@ -220,7 +226,7 @@ export class SupabaseRepository implements DatabaseRepository {
           .single();
         if (convErr) {
           if (isRlsError(convErr)) {
-            return this.fallback.getOrCreateConversation(channel, platformUserId, displayName);
+            return this.useFallbackConv(await this.fallback.getOrCreateConversation(channel, platformUserId, displayName));
           }
           throw convErr;
         }
@@ -244,13 +250,16 @@ export class SupabaseRepository implements DatabaseRepository {
       };
     } catch (err: any) {
       if (isRlsError(err)) {
-        return this.fallback.getOrCreateConversation(channel, platformUserId, displayName);
+        return this.useFallbackConv(await this.fallback.getOrCreateConversation(channel, platformUserId, displayName));
       }
       throw err;
     }
   }
 
   async getConversationHistory(conversationId: string, limit = 15): Promise<MessageRecord[]> {
+    if (this.fallbackConvIds.has(conversationId)) {
+      return this.fallback.getConversationHistory(conversationId, limit);
+    }
     try {
       const { data, error } = await this.client
         .from('messages')
@@ -288,6 +297,9 @@ export class SupabaseRepository implements DatabaseRepository {
     content: string;
     attachments?: any[];
   }): Promise<{ message: MessageRecord; isDuplicate: boolean }> {
+    if (this.fallbackConvIds.has(msg.conversationId)) {
+      return this.fallback.saveMessage(msg);
+    }
     try {
       const { data, error } = await this.client
         .from('messages')
@@ -362,17 +374,25 @@ export class SupabaseRepository implements DatabaseRepository {
   }
 
   async updateConversation(id: string, data: Partial<ConversationRecord>): Promise<void> {
-    await this.client
-      .from('conversations')
-      .update({
-        is_human_assigned: data.isHumanAssigned,
-        ai_paused: data.aiPaused,
-        assigned_to_user_id: data.assignedToUserId,
-        current_intent: data.currentIntent,
-        pending_summary: data.pendingSummary,
-        is_closed: data.isClosed,
-      })
-      .eq('id', id);
+    if (this.fallbackConvIds.has(id)) {
+      return this.fallback.updateConversation(id, data);
+    }
+    try {
+      await this.client
+        .from('conversations')
+        .update({
+          is_human_assigned: data.isHumanAssigned,
+          ai_paused: data.aiPaused,
+          assigned_to_user_id: data.assignedToUserId,
+          current_intent: data.currentIntent,
+          pending_summary: data.pendingSummary,
+          is_closed: data.isClosed,
+        })
+        .eq('id', id);
+    } catch (err: any) {
+      if (isRlsError(err)) return this.fallback.updateConversation(id, data);
+      throw err;
+    }
   }
 
   async listOrders(limit = 100): Promise<OrderRecord[]> {
@@ -386,6 +406,9 @@ export class SupabaseRepository implements DatabaseRepository {
   }
 
   async getActiveDraftOrder(conversationId: string): Promise<OrderRecord | null> {
+    if (this.fallbackConvIds.has(conversationId)) {
+      return this.fallback.getActiveDraftOrder(conversationId);
+    }
     const { data } = await this.client
       .from('orders')
       .select('*, items:order_items(*)')

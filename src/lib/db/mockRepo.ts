@@ -182,7 +182,7 @@ export class InMemoryRepository implements DatabaseRepository {
     if (!conv) {
       isNew = true;
       conv = {
-        id: `conv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id: crypto.randomUUID(),
         channel,
         channelIdentityId: key,
         isHumanAssigned: false,
@@ -217,7 +217,7 @@ export class InMemoryRepository implements DatabaseRepository {
     }
 
     const newMsg: MessageRecord = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: crypto.randomUUID(),
       conversationId: msg.conversationId,
       channel: msg.channel,
       platformMessageId: msg.platformMessageId,
