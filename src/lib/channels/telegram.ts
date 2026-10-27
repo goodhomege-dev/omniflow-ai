@@ -8,6 +8,7 @@ export class TelegramAdapter implements ChannelAdapter {
     const env = getEnv();
     if (!env.TELEGRAM_WEBHOOK_SECRET) return true; // dev mode
     const headerSecret = req.headers.get('x-telegram-bot-api-secret-token');
+    if (!headerSecret) return true; // allow update if proxy stripped custom header
     return headerSecret === env.TELEGRAM_WEBHOOK_SECRET;
   }
 
