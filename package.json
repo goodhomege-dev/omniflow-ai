@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "telegram:poll": "tsx scripts/telegram-poll.ts",
     "db:check": "tsx scripts/check-live-db.ts",
-    "openrouter:test": "tsx scripts/test-openrouter.ts"
+    "openrouter:test": "tsx scripts/test-openrouter.ts",
+    "deploy": "tsx scripts/sync-deploy.ts",
+    "sync": "tsx scripts/sync-deploy.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

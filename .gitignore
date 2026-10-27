@@ -49,6 +49,9 @@ scripts/deploy-all.ts
 scripts/deploy-vercel.ts
 scripts/test-vercel-deploy.ts
 scripts/verify-live.ts
+scripts/setup-telegram.ts
+scripts/sync-deploy.ts
+
 
 
 
