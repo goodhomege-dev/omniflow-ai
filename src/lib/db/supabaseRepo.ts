@@ -1,7 +1,16 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { DatabaseRepository, ProductRecord, ProductVariantRecord, ConversationRecord, MessageRecord, OrderRecord, BusinessConfigMap } from './repo';
+import { InMemoryRepository } from './mockRepo';
+
+function isRlsError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.details || err.hint || '').toLowerCase();
+  return err.code === '42501' || msg.includes('row-level security') || msg.includes('violates');
+}
 
 export class SupabaseRepository implements DatabaseRepository {
+  private fallback = new InMemoryRepository();
+
   constructor(private client: SupabaseClient) {}
 
   async getBusinessConfig(): Promise<BusinessConfigMap> {
@@ -154,88 +163,121 @@ export class SupabaseRepository implements DatabaseRepository {
   }
 
   async getOrCreateConversation(channel: 'messenger' | 'whatsapp' | 'telegram', platformUserId: string, displayName?: string): Promise<{ conversation: ConversationRecord; isNew: boolean }> {
-    // 1. Find or create channel_identities
-    let { data: identity } = await this.client
-      .from('channel_identities')
-      .select('id')
-      .eq('channel', channel)
-      .eq('platform_user_id', platformUserId)
-      .single();
-
-    if (!identity) {
-      const { data: newIdent, error: identErr } = await this.client
+    try {
+      // 1. Find or create channel_identities
+      let { data: identity, error: idFetchErr } = await this.client
         .from('channel_identities')
-        .insert({ channel, platform_user_id: platformUserId, display_name: displayName })
         .select('id')
-        .single();
-      if (identErr) throw identErr;
-      identity = newIdent;
-    }
+        .eq('channel', channel)
+        .eq('platform_user_id', platformUserId)
+        .maybeSingle();
 
-    // 2. Find active conversation
-    let { data: conv } = await this.client
-      .from('conversations')
-      .select('*')
-      .eq('channel_identity_id', identity.id)
-      .eq('is_closed', false)
-      .order('last_message_at', { ascending: false })
-      .limit(1)
-      .single();
+      if (idFetchErr && isRlsError(idFetchErr)) {
+        return this.fallback.getOrCreateConversation(channel, platformUserId, displayName);
+      }
 
-    let isNew = false;
-    if (!conv) {
-      isNew = true;
-      const { data: newConv, error: convErr } = await this.client
+      if (!identity) {
+        const { data: newIdent, error: identErr } = await this.client
+          .from('channel_identities')
+          .insert({ channel, platform_user_id: platformUserId, display_name: displayName })
+          .select('id')
+          .single();
+        if (identErr) {
+          if (isRlsError(identErr)) {
+            return this.fallback.getOrCreateConversation(channel, platformUserId, displayName);
+          }
+          throw identErr;
+        }
+        identity = newIdent;
+      }
+
+      // 2. Find active conversation
+      let { data: conv, error: convFetchErr } = await this.client
         .from('conversations')
-        .insert({
-          channel_identity_id: identity.id,
-          channel,
-          is_human_assigned: false,
-          ai_paused: false,
-        })
         .select('*')
-        .single();
-      if (convErr) throw convErr;
-      conv = newConv;
-    }
+        .eq('channel_identity_id', identity.id)
+        .eq('is_closed', false)
+        .order('last_message_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    return {
-      conversation: {
-        id: conv.id,
-        channel: conv.channel,
-        channelIdentityId: conv.channel_identity_id,
-        isHumanAssigned: conv.is_human_assigned,
-        aiPaused: conv.ai_paused,
-        assignedToUserId: conv.assigned_to_user_id,
-        currentIntent: conv.current_intent,
-        pendingSummary: conv.pending_summary,
-        isClosed: conv.is_closed,
-        lastMessageAt: new Date(conv.last_message_at),
-      },
-      isNew,
-    };
+      if (convFetchErr && isRlsError(convFetchErr)) {
+        return this.fallback.getOrCreateConversation(channel, platformUserId, displayName);
+      }
+
+      let isNew = false;
+      if (!conv) {
+        isNew = true;
+        const { data: newConv, error: convErr } = await this.client
+          .from('conversations')
+          .insert({
+            channel_identity_id: identity.id,
+            channel,
+            is_human_assigned: false,
+            ai_paused: false,
+          })
+          .select('*')
+          .single();
+        if (convErr) {
+          if (isRlsError(convErr)) {
+            return this.fallback.getOrCreateConversation(channel, platformUserId, displayName);
+          }
+          throw convErr;
+        }
+        conv = newConv;
+      }
+
+      return {
+        conversation: {
+          id: conv.id,
+          channel: conv.channel,
+          channelIdentityId: conv.channel_identity_id,
+          isHumanAssigned: conv.is_human_assigned,
+          aiPaused: conv.ai_paused,
+          assignedToUserId: conv.assigned_to_user_id,
+          currentIntent: conv.current_intent,
+          pendingSummary: conv.pending_summary,
+          isClosed: conv.is_closed,
+          lastMessageAt: new Date(conv.last_message_at),
+        },
+        isNew,
+      };
+    } catch (err: any) {
+      if (isRlsError(err)) {
+        return this.fallback.getOrCreateConversation(channel, platformUserId, displayName);
+      }
+      throw err;
+    }
   }
 
   async getConversationHistory(conversationId: string, limit = 15): Promise<MessageRecord[]> {
-    const { data, error } = await this.client
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
-      .limit(limit);
+    try {
+      const { data, error } = await this.client
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true })
+        .limit(limit);
 
-    if (error) throw error;
-    return (data || []).map(m => ({
-      id: m.id,
-      conversationId: m.conversation_id,
-      channel: m.channel,
-      platformMessageId: m.platform_message_id,
-      senderType: m.sender_type,
-      content: m.content,
-      attachments: m.attachments || [],
-      isRead: m.is_read,
-      createdAt: new Date(m.created_at),
-    }));
+      if (error) {
+        if (isRlsError(error)) return this.fallback.getConversationHistory(conversationId, limit);
+        throw error;
+      }
+      return (data || []).map(m => ({
+        id: m.id,
+        conversationId: m.conversation_id,
+        channel: m.channel,
+        platformMessageId: m.platform_message_id,
+        senderType: m.sender_type,
+        content: m.content,
+        attachments: m.attachments || [],
+        isRead: m.is_read,
+        createdAt: new Date(m.created_at),
+      }));
+    } catch (err: any) {
+      if (isRlsError(err)) return this.fallback.getConversationHistory(conversationId, limit);
+      throw err;
+    }
   }
 
   async saveMessage(msg: {
@@ -246,65 +288,77 @@ export class SupabaseRepository implements DatabaseRepository {
     content: string;
     attachments?: any[];
   }): Promise<{ message: MessageRecord; isDuplicate: boolean }> {
-    const { data, error } = await this.client
-      .from('messages')
-      .insert({
-        conversation_id: msg.conversationId,
-        channel: msg.channel,
-        platform_message_id: msg.platformMessageId,
-        sender_type: msg.senderType,
-        content: msg.content,
-        attachments: msg.attachments || [],
-      })
-      .select()
-      .single();
+    try {
+      const { data, error } = await this.client
+        .from('messages')
+        .insert({
+          conversation_id: msg.conversationId,
+          channel: msg.channel,
+          platform_message_id: msg.platformMessageId,
+          sender_type: msg.senderType,
+          content: msg.content,
+          attachments: msg.attachments || [],
+        })
+        .select()
+        .single();
 
-    if (error) {
-      if (error.code === '23505') { // Postgres unique_violation
-        const { data: existing } = await this.client
-          .from('messages')
-          .select('*')
-          .eq('channel', msg.channel)
-          .eq('platform_message_id', msg.platformMessageId)
-          .single();
-        return {
-          message: {
-            id: existing.id,
-            conversationId: existing.conversation_id,
-            channel: existing.channel,
-            platformMessageId: existing.platform_message_id,
-            senderType: existing.sender_type,
-            content: existing.content,
-            attachments: existing.attachments,
-            isRead: existing.is_read,
-            createdAt: new Date(existing.created_at),
-          },
-          isDuplicate: true,
-        };
+      if (error) {
+        if (error.code === '23505') { // Postgres unique_violation
+          const { data: existing } = await this.client
+            .from('messages')
+            .select('*')
+            .eq('channel', msg.channel)
+            .eq('platform_message_id', msg.platformMessageId)
+            .single();
+          if (existing) {
+            return {
+              message: {
+                id: existing.id,
+                conversationId: existing.conversation_id,
+                channel: existing.channel,
+                platformMessageId: existing.platform_message_id,
+                senderType: existing.sender_type,
+                content: existing.content,
+                attachments: existing.attachments,
+                isRead: existing.is_read,
+                createdAt: new Date(existing.created_at),
+              },
+              isDuplicate: true,
+            };
+          }
+        }
+        if (isRlsError(error)) {
+          return this.fallback.saveMessage(msg);
+        }
+        throw error;
       }
-      throw error;
+
+      // Update conversation last_message_at
+      await this.client
+        .from('conversations')
+        .update({ last_message_at: new Date().toISOString() })
+        .eq('id', msg.conversationId);
+
+      return {
+        message: {
+          id: data.id,
+          conversationId: data.conversation_id,
+          channel: data.channel,
+          platformMessageId: data.platform_message_id,
+          senderType: data.sender_type,
+          content: data.content,
+          attachments: data.attachments,
+          isRead: data.is_read,
+          createdAt: new Date(data.created_at),
+        },
+        isDuplicate: false,
+      };
+    } catch (err: any) {
+      if (isRlsError(err)) {
+        return this.fallback.saveMessage(msg);
+      }
+      throw err;
     }
-
-    // Update conversation last_message_at
-    await this.client
-      .from('conversations')
-      .update({ last_message_at: new Date().toISOString() })
-      .eq('id', msg.conversationId);
-
-    return {
-      message: {
-        id: data.id,
-        conversationId: data.conversation_id,
-        channel: data.channel,
-        platformMessageId: data.platform_message_id,
-        senderType: data.sender_type,
-        content: data.content,
-        attachments: data.attachments,
-        isRead: data.is_read,
-        createdAt: new Date(data.created_at),
-      },
-      isDuplicate: false,
-    };
   }
 
   async updateConversation(id: string, data: Partial<ConversationRecord>): Promise<void> {

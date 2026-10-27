@@ -175,7 +175,7 @@ export class InMemoryRepository implements DatabaseRepository {
     return list.slice(0, limit);
   }
 
-  async getOrCreateConversation(channel: 'messenger' | 'whatsapp' | 'telegram', platformUserId: string): Promise<{ conversation: ConversationRecord; isNew: boolean }> {
+  async getOrCreateConversation(channel: 'messenger' | 'whatsapp' | 'telegram', platformUserId: string, displayName?: string): Promise<{ conversation: ConversationRecord; isNew: boolean }> {
     const key = `${channel}:${platformUserId}`;
     let conv = this.conversations.get(key);
     let isNew = false;
