@@ -4,6 +4,7 @@ import { buildSystemPrompt } from './prompt';
 import { parseAgentJson, AgentResponse } from './schema';
 import { ToolExecutor } from './tools';
 import { applySafetyGuards } from './guards';
+import { isCorruptedGeorgian, generateSmartFallback } from '../llm/openrouter';
 
 export interface ProcessMessageInput {
   channel: 'messenger' | 'whatsapp' | 'telegram';
@@ -130,6 +131,17 @@ export class AgentOrchestrator {
       }
 
       const agentData = parsed.data;
+
+      // Ensure replyText is clean, pure Georgian without foreign script token corruption
+      if (agentData.replyText && isCorruptedGeorgian(agentData.replyText)) {
+        console.warn('[Orchestrator] Detected corrupted text in LLM response, replacing with safe Georgian fallback.');
+        const fallbackRaw = generateSmartFallback(messages);
+        const fbParsed = parseAgentJson(fallbackRaw);
+        if (fbParsed.success) {
+          agentData.replyText = fbParsed.data.replyText;
+          agentData.intent = fbParsed.data.intent;
+        }
+      }
 
       // If no actions, we have our final text
       if (!agentData.actions || agentData.actions.length === 0) {
