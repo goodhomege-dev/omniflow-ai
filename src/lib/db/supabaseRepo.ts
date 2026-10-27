@@ -554,13 +554,25 @@ export class SupabaseRepository implements DatabaseRepository {
   }
 
   async queueOutboxMessage(channel: 'messenger' | 'whatsapp' | 'telegram', recipientId: string, content: string, attachments: any[] = []): Promise<string> {
-    const { data, error } = await this.client
-      .from('outbox_messages')
-      .insert({ channel, recipient_id: recipientId, content, attachments, status: 'PENDING' })
-      .select('id')
-      .single();
-    if (error) throw error;
-    return data.id;
+    try {
+      const { data, error } = await this.client
+        .from('outbox_messages')
+        .insert({ channel, recipient_id: recipientId, content, attachments, status: 'PENDING' })
+        .select('id')
+        .single();
+      if (error) {
+        if (isRlsError(error)) {
+          return this.fallback.queueOutboxMessage(channel, recipientId, content, attachments);
+        }
+        throw error;
+      }
+      return data.id;
+    } catch (err: any) {
+      if (isRlsError(err)) {
+        return this.fallback.queueOutboxMessage(channel, recipientId, content, attachments);
+      }
+      throw err;
+    }
   }
 
   async getPendingOutboxMessages(limit = 20): Promise<any[]> {
@@ -596,15 +608,22 @@ export class SupabaseRepository implements DatabaseRepository {
   }
 
   async recordAudit(actor: string, action: string, entity: string, entityId?: string, oldVals?: any, newVals?: any, correlationId?: string): Promise<void> {
-    await this.client.from('audit_logs').insert({
-      actor_id: actor,
-      action,
-      entity_name: entity,
-      entity_id: entityId,
-      old_values: oldVals,
-      new_values: newVals,
-      correlation_id: correlationId,
-    });
+    try {
+      await this.client.from('audit_logs').insert({
+        actor_id: actor,
+        action,
+        entity_type: entity,
+        entity_id: entityId,
+        old_values: oldVals,
+        new_values: newVals,
+        correlation_id: correlationId,
+      });
+    } catch (err: any) {
+      if (isRlsError(err)) {
+        return this.fallback.recordAudit(actor, action, entity, entityId, oldVals, newVals, correlationId);
+      }
+      throw err;
+    }
   }
 
   async getAuditLogs(limit = 50): Promise<any[]> {
