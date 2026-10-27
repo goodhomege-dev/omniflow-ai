@@ -5,6 +5,7 @@ import { parseAgentJson, AgentResponse } from './schema';
 import { ToolExecutor } from './tools';
 import { applySafetyGuards } from './guards';
 import { isCorruptedGeorgian, generateSmartFallback } from '../llm/openrouter';
+import { ensureProperGeorgian } from './georgianSanitizer';
 
 export interface ProcessMessageInput {
   channel: 'messenger' | 'whatsapp' | 'telegram';
@@ -205,6 +206,12 @@ export class AgentOrchestrator {
       paymentConfirmedThisTurn,
       activeOrderExists: !!activeOrder,
     });
+
+    // 7.1 Sanitize and ensure 100% grammatically correct Georgian output
+    const fallbackText = generateSmartFallback(messages);
+    const fbParsed = parseAgentJson(fallbackText);
+    const defaultFallbackReply = fbParsed.success ? fbParsed.data.replyText : 'მოგესალმებით! რით შემიძლია დაგეხმაროთ?';
+    guardedResponse.replyText = ensureProperGeorgian(guardedResponse.replyText, defaultFallbackReply);
 
     // 8. Save Agent response message to DB
     await this.repo.saveMessage({
