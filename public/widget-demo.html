@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniFlow AI — საიტის ვიჯეტის დემო</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 40px 20px;
+      background: #f8fafc;
+      color: #0f172a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: #ffffff;
+      max-width: 650px;
+      padding: 32px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      border: 1px solid #e2e8f0;
+      margin-top: 40px;
+    }
+    h1 { margin-top: 0; font-size: 24px; color: #1e293b; }
+    p { line-height: 1.6; color: #475569; font-size: 15px; }
+    pre {
+      background: #0f172a;
+      color: #38bdf8;
+      padding: 16px;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-size: 13px;
+    }
+    .badge {
+      display: inline-block;
+      background: #e0e7ff;
+      color: #4338ca;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <span class="badge">🌐 OmniFlow AI Widget Demo</span>
+    <h1>თქვენი ვებსაიტის სატესტო გვერდი</h1>
+    <p>ეს არის ნიმუში გვერდი. შეხედეთ <strong>ეკრანის ქვედა მარჯვენა კუთხეში</strong> — იქ გამოჩნდა მცურავი ჩათ-ღილაკი.</p>
+    <p>დააჭირეთ ღილაკს და ნახავთ არხების (WhatsApp, Messenger, Telegram) არჩევანს.</p>
+
+    <h3>როგორ ჩასვათ ეს თქვენს რეალურ საიტზე:</h3>
+    <p>უბრალოდ დააკოპირეთ ეს ერთი კოდი თქვენი საიტის <code>&lt;body&gt;</code> ტეგის ბოლოს:</p>
+    <pre>&lt;script 
+  src="https://თქვენი-დომენი.ge/chat-widget.js" 
+  data-whatsapp="995555123456" 
+  data-messenger="tqveni_facebook_page" 
+  data-telegram="tqveni_bot_username"
+  data-brand="ჩემი მაღაზია"
+  data-color="#4f46e5"&gt;
+&lt;/script&gt;</pre>
+  </div>
+
+  <!-- OmniFlow Widget Demo Embed -->
+  <script 
+    src="/chat-widget.js" 
+    data-whatsapp="995599000000" 
+    data-messenger="techstorege" 
+    data-telegram="techstore_ka_bot"
+    data-brand="TechStore Georgia"
+    data-color="#4f46e5">
+  </script>
+
+</body>
+</html>
