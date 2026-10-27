@@ -27,25 +27,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  const repo = getRepository();
-  const llm = getLlmProvider();
-  const orchestrator = new AgentOrchestrator(repo, llm);
+  try {
+    const repo = getRepository();
+    const llm = getLlmProvider();
+    const orchestrator = new AgentOrchestrator(repo, llm);
 
-  for (const msg of messages) {
-    const res = await orchestrator.processIncomingMessage({
-      channel: 'telegram',
-      platformUserId: msg.platformUserId,
-      platformMessageId: msg.platformMessageId,
-      text: msg.text,
-      displayName: msg.displayName,
-      attachments: msg.attachments,
-    });
+    for (const msg of messages) {
+      const res = await orchestrator.processIncomingMessage({
+        channel: 'telegram',
+        platformUserId: msg.platformUserId,
+        platformMessageId: msg.platformMessageId,
+        text: msg.text,
+        displayName: msg.displayName,
+        attachments: msg.attachments,
+      });
 
-    // If response was generated and not taken over by human, send reply immediately
-    if (res.replyText && !res.isHumanTakeover) {
-      await adapter.sendText(msg.platformUserId, res.replyText);
+      // If response was generated and not taken over by human, send reply immediately
+      if (res.replyText && !res.isHumanTakeover) {
+        const sendResult = await adapter.sendText(msg.platformUserId, res.replyText);
+        if (!sendResult.ok) {
+          console.error('[Telegram Send Error]:', sendResult.error);
+        }
+      }
     }
-  }
 
-  return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true });
+  } catch (error: any) {
+    console.error('[Telegram Webhook Exception]:', error);
+    return NextResponse.json({ ok: false, error: error?.message || String(error) }, { status: 200 });
+  }
 }
