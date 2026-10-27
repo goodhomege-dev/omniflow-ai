@@ -46,4 +46,11 @@ next-env.d.ts
 scripts/deploy-setup.ts
 scripts/github-push.ts
 scripts/deploy-all.ts
+scripts/deploy-vercel.ts
+scripts/test-vercel-deploy.ts
+scripts/verify-live.ts
 
+
+
+.vercel
+.env*
